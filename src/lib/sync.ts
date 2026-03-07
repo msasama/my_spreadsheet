@@ -6,6 +6,7 @@ import {
     setDoc,
     serverTimestamp,
     deleteField,
+    updateDoc,
     collection,
     onSnapshot,
     type Unsubscribe,
@@ -53,6 +54,10 @@ export async function updateCell(
         },
         lastChanged: serverTimestamp()
     }, { merge: true });
+
+    // Sync lastModified on the parent document for dashboard sorting
+    const docRef = doc(db, "docs", docId);
+    await updateDoc(docRef, { updatedAt: serverTimestamp() });
 }
 
 export function subscribeToRows(

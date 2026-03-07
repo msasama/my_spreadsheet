@@ -18,7 +18,7 @@ export interface DocumentMetadata {
     title: string;
     ownerId: string;
     ownerName: string;
-    lastModified: Timestamp | Date;
+    updatedAt: Timestamp | Date;
 }
 
 export async function createDocument(
@@ -34,7 +34,7 @@ export async function createDocument(
         title,
         ownerId: uid,
         ownerName: displayName,
-        lastModified: serverTimestamp(),
+        updatedAt: serverTimestamp(),
     });
 
     return newDocRef.id;
@@ -44,7 +44,7 @@ export async function getUserDocuments(uid: string): Promise<DocumentMetadata[]>
     const q = query(
         collection(db, "docs"),
         where("ownerId", "==", uid),
-        orderBy("lastModified", "desc")
+        orderBy("updatedAt", "desc")
     );
 
     const snapshot = await getDocs(q);
@@ -57,7 +57,7 @@ export async function getUserDocuments(uid: string): Promise<DocumentMetadata[]>
             ownerId: data.ownerId as string,
             ownerName: data.ownerName as string,
             // Fallback to new Date() if serverTimestamp hasn't resolved yet
-            lastModified: (data.lastModified as Timestamp | null) ?? new Date(),
+            updatedAt: (data.updatedAt as Timestamp | null) ?? new Date(),
         };
     });
 }
@@ -73,11 +73,11 @@ export async function getDocument(docId: string): Promise<DocumentMetadata | nul
         title: data.title as string,
         ownerId: data.ownerId as string,
         ownerName: data.ownerName as string,
-        lastModified: (data.lastModified as Timestamp | null) ?? new Date(),
+        updatedAt: (data.updatedAt as Timestamp | null) ?? new Date(),
     };
 }
 
 export async function updateDocumentTitle(docId: string, newTitle: string): Promise<void> {
     const docRef = doc(db, "docs", docId);
-    await updateDoc(docRef, { title: newTitle, lastModified: serverTimestamp() });
+    await updateDoc(docRef, { title: newTitle, updatedAt: serverTimestamp() });
 }

@@ -123,7 +123,7 @@ export default function Dashboard() {
               >
                 <span className="font-medium text-gray-800">{doc.title}</span>
                 <span className="text-xs text-gray-400">
-                  {formatDate(doc.lastModified)}
+                  {formatDate(doc.updatedAt)}
                 </span>
               </button>
             ))}
