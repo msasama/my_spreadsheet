@@ -1,5 +1,23 @@
 import { db } from "@/lib/firebase";
-import { collection, doc, setDoc, serverTimestamp } from "firebase/firestore";
+import {
+    collection,
+    doc,
+    setDoc,
+    serverTimestamp,
+    query,
+    where,
+    getDocs,
+    orderBy,
+    type Timestamp,
+} from "firebase/firestore";
+
+export interface DocumentMetadata {
+    id: string;
+    title: string;
+    ownerId: string;
+    ownerName: string;
+    lastModified: Timestamp | Date;
+}
 
 export async function createDocument(
     title: string,
@@ -18,4 +36,26 @@ export async function createDocument(
     });
 
     return newDocRef.id;
+}
+
+export async function getUserDocuments(uid: string): Promise<DocumentMetadata[]> {
+    const q = query(
+        collection(db, "docs"),
+        where("ownerId", "==", uid),
+        orderBy("lastModified", "desc")
+    );
+
+    const snapshot = await getDocs(q);
+
+    return snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+            id: docSnap.id,
+            title: data.title as string,
+            ownerId: data.ownerId as string,
+            ownerName: data.ownerName as string,
+            // Fallback to new Date() if serverTimestamp hasn't resolved yet
+            lastModified: (data.lastModified as Timestamp | null) ?? new Date(),
+        };
+    });
 }
