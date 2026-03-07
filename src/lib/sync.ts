@@ -5,10 +5,12 @@ import {
     writeBatch,
     setDoc,
     serverTimestamp,
+    deleteField,
     collection,
     onSnapshot,
     type Unsubscribe,
     type DocumentData,
+    type FieldValue,
 } from "firebase/firestore";
 
 export interface RowData {
@@ -41,11 +43,13 @@ export async function updateCell(
     value: string
 ): Promise<void> {
     const ref = doc(db, "docs", docId, "rows", rowId);
+    const cellPayload: { value: string } | FieldValue = value === ""
+        ? deleteField()
+        : { value };
+
     await setDoc(ref, {
         cells: {
-            [colId]: {
-                value: value
-            }
+            [colId]: cellPayload
         },
         lastChanged: serverTimestamp()
     }, { merge: true });
