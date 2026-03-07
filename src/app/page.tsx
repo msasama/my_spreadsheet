@@ -5,6 +5,7 @@ import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
 import Grid from "@/components/Grid";
 import useIsOffline from "@/hooks/useIsOffline";
+import { getUserColor } from "@/lib/colors";
 
 export default function Home() {
   const { user, loading, signInWithGoogle } = useAuth();
@@ -31,6 +32,8 @@ export default function Home() {
       </div>
     );
   }
+
+  const color = getUserColor(user.uid);
 
   return (
     <main className="flex h-screen flex-col">
