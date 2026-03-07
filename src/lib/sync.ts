@@ -53,11 +53,12 @@ export async function updateCell(
 
 export function subscribeToRows(
     docId: string,
-    callback: (rows: RowData[]) => void
+    callback: (rows: RowData[], isPending: boolean) => void
 ): Unsubscribe {
     const rowsRef = collection(db, "docs", docId, "rows");
 
-    return onSnapshot(rowsRef, (snapshot) => {
+    return onSnapshot(rowsRef, { includeMetadataChanges: true }, (snapshot) => {
+        const isPending = snapshot.metadata.hasPendingWrites;
         const rows: RowData[] = snapshot.docs.map((docSnap) => {
             const data: DocumentData = docSnap.data();
             return {
@@ -65,6 +66,6 @@ export function subscribeToRows(
                 cells: (data.cells as Record<string, { value: string }>) ?? {},
             };
         });
-        callback(rows);
+        callback(rows, isPending);
     });
 }

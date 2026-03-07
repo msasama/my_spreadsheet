@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
@@ -21,6 +21,11 @@ export default function SheetPage() {
     const [title, setTitle] = useState<string>("Loading...");
     const [isEditingTitle, setIsEditingTitle] = useState<boolean>(false);
     const [localTitle, setLocalTitle] = useState<string>("");
+    const [syncState, setSyncState] = useState<"saved" | "saving">("saved");
+
+    const handleSyncStateChange = useCallback((state: "saved" | "saving") => {
+        setSyncState(state);
+    }, []);
 
     // Fetch document title on mount
     useEffect(() => {
@@ -122,7 +127,11 @@ export default function SheetPage() {
                 {/* Right: Status + User + Actions */}
                 <div className="flex items-center gap-3">
                     {/* Save indicator */}
-                    <span className="text-xs text-green-600">✅ Saved</span>
+                    {syncState === "saving" ? (
+                        <span className="text-xs font-medium text-orange-500">⏳ Saving...</span>
+                    ) : (
+                        <span className="text-xs font-medium text-green-600">Saved to cloud ☁️</span>
+                    )}
 
                     {/* Online/Offline status */}
                     {isOffline ? (
@@ -151,7 +160,7 @@ export default function SheetPage() {
             </header>
 
             <div className="flex-1 overflow-hidden">
-                <Grid isOffline={isOffline} docId={docId} />
+                <Grid isOffline={isOffline} docId={docId} onSyncStateChange={handleSyncStateChange} />
             </div>
         </main>
     );

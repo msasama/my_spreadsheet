@@ -19,9 +19,10 @@ type GridData = Record<string, CellData>;
 interface GridProps {
     isOffline: boolean;
     docId: string;
+    onSyncStateChange?: (state: "saved" | "saving") => void;
 }
 
-export default function Grid({ isOffline, docId }: GridProps) {
+export default function Grid({ isOffline, docId, onSyncStateChange }: GridProps) {
     // Server truth stored in ref — avoids 1,300-cell re-renders on every update
     const serverData = useRef<GridData>({});
 
@@ -42,7 +43,9 @@ export default function Grid({ isOffline, docId }: GridProps) {
 
     // Subscribe to real-time Firestore updates
     useEffect(() => {
-        const unsubscribe = subscribeToRows(docId, (rows: RowData[]) => {
+        const unsubscribe = subscribeToRows(docId, (rows: RowData[], isPending: boolean) => {
+            // Report sync state to parent
+            onSyncStateChange?.(isPending ? "saving" : "saved");
             // Build flat map from incoming row data
             const incoming: GridData = {};
             for (const row of rows) {
