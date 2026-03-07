@@ -15,7 +15,11 @@ interface CellData {
 
 type GridData = Record<string, CellData>;
 
-export default function Grid() {
+interface GridProps {
+    isOffline: boolean;
+}
+
+export default function Grid({ isOffline }: GridProps) {
     const [data, setData] = useState<GridData>(() => {
         const init: GridData = {};
         for (const col of COLUMNS) {
@@ -69,6 +73,7 @@ export default function Grid() {
                                             initialFormula={cell.formula}
                                             initialValue={cell.value}
                                             onUpdate={handleCellUpdate}
+                                            isOffline={isOffline}
                                         />
                                     </td>
                                 );

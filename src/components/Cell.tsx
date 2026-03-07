@@ -7,6 +7,7 @@ interface CellProps {
     initialFormula: string;
     initialValue: string;
     onUpdate: (id: string, formula: string) => void;
+    isOffline: boolean;
 }
 
 const Cell = React.memo(function Cell({
@@ -14,6 +15,7 @@ const Cell = React.memo(function Cell({
     initialFormula,
     initialValue,
     onUpdate,
+    isOffline,
 }: CellProps) {
     const [isEditing, setIsEditing] = useState<boolean>(false);
     const [localFormula, setLocalFormula] = useState<string>(initialFormula);
@@ -28,8 +30,10 @@ const Cell = React.memo(function Cell({
     }
 
     const handleFocus = useCallback(() => {
+        // The Lock: block editing when offline
+        if (isOffline) return;
         setIsEditing(true);
-    }, []);
+    }, [isOffline]);
 
     const handleBlur = useCallback(() => {
         setIsEditing(false);
@@ -41,17 +45,15 @@ const Cell = React.memo(function Cell({
     }, [localFormula, onUpdate, cellId]);
 
     const handlePaste = useCallback((e: ClipboardEvent<HTMLInputElement>) => {
-        // 1. Intercept the clipboard data
         const text = e.clipboardData.getData("text/plain");
 
-        // 2. Define the security constraints
-        const hasForbiddenChars = text.includes("\n") || text.includes("\t");
+        // This regex looks for ANY newline (\n), carriage return (\r), or tab (\t)
+        const hasForbiddenChars = /[\n\r\t]/.test(text);
         const isTooLong = text.length > 2000;
 
-        // 3. The Guard Logic
         if (hasForbiddenChars || isTooLong) {
-            e.preventDefault(); // This is the kill-switch
-            alert("Paste blocked: Content contains multiple lines or exceeds 2000 characters.");
+            e.preventDefault();
+            alert("Paste blocked: Multi-line, Tabs, or Overflow detected. Please paste single-line text only.");
         }
     }, []);
 
@@ -75,7 +77,7 @@ const Cell = React.memo(function Cell({
         <div
             tabIndex={0}
             onFocus={handleFocus}
-            className="h-8 w-28 truncate border border-gray-300 px-1 text-sm text-gray-900 leading-8"
+            className={`h-8 w-28 truncate border border-gray-300 px-1 text-sm text-gray-900 leading-8 ${isOffline ? "cursor-not-allowed bg-gray-50" : ""}`}
         >
             {initialValue}
         </div>
