@@ -7,6 +7,8 @@ import {
     query,
     where,
     getDocs,
+    getDoc,
+    updateDoc,
     orderBy,
     type Timestamp,
 } from "firebase/firestore";
@@ -58,4 +60,24 @@ export async function getUserDocuments(uid: string): Promise<DocumentMetadata[]>
             lastModified: (data.lastModified as Timestamp | null) ?? new Date(),
         };
     });
+}
+
+export async function getDocument(docId: string): Promise<DocumentMetadata | null> {
+    const docSnap = await getDoc(doc(db, "docs", docId));
+
+    if (!docSnap.exists()) return null;
+
+    const data = docSnap.data();
+    return {
+        id: docSnap.id,
+        title: data.title as string,
+        ownerId: data.ownerId as string,
+        ownerName: data.ownerName as string,
+        lastModified: (data.lastModified as Timestamp | null) ?? new Date(),
+    };
+}
+
+export async function updateDocumentTitle(docId: string, newTitle: string): Promise<void> {
+    const docRef = doc(db, "docs", docId);
+    await updateDoc(docRef, { title: newTitle, lastModified: serverTimestamp() });
 }
