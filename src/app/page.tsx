@@ -1,15 +1,30 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { auth } from "@/lib/firebase";
-import { signOut } from "firebase/auth";
-import Grid from "@/components/Grid";
-import useIsOffline from "@/hooks/useIsOffline";
-import { getUserColor } from "@/lib/colors";
+import { createDocument } from "@/lib/documents";
 
-export default function Home() {
+export default function Dashboard() {
   const { user, loading, signInWithGoogle } = useAuth();
-  const isOffline = useIsOffline();
+  const router = useRouter();
+  const [isCreating, setIsCreating] = useState<boolean>(false);
+
+  const handleCreateDoc = async (): Promise<void> => {
+    if (!user) return;
+    setIsCreating(true);
+    try {
+      const newId = await createDocument(
+        "Untitled Spreadsheet",
+        user.uid,
+        user.displayName ?? "Anonymous"
+      );
+      router.push("/sheet/" + newId);
+    } catch (err) {
+      console.error("[dashboard] Failed to create document:", err);
+      setIsCreating(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -23,6 +38,7 @@ export default function Home() {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-6 bg-gray-50">
         <h1 className="text-3xl font-bold text-gray-800">My Spreadsheet</h1>
+        <p className="text-gray-500">Please log in to view or create documents.</p>
         <button
           onClick={() => void signInWithGoogle()}
           className="rounded-lg bg-blue-600 px-6 py-3 text-lg font-semibold text-white shadow-md transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
@@ -33,38 +49,19 @@ export default function Home() {
     );
   }
 
-  const color = getUserColor(user.uid);
-
   return (
-    <main className="flex h-screen flex-col">
-      <header className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-6 py-3">
-        <h1 className="text-sm font-semibold text-gray-800">My Spreadsheet</h1>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-500">
-            {user.displayName ?? user.email}
-          </span>
-          {isOffline ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-700">
-              <span className="h-2 w-2 rounded-full bg-red-500" />
-              Offline - Saving Disabled
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
-              <span className="h-2 w-2 rounded-full bg-green-500" />
-              Cloud Synced
-            </span>
-          )}
-        </div>
-        <button
-          onClick={() => void signOut(auth)}
-          className="rounded-md bg-red-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2"
-        >
-          Sign Out
-        </button>
-      </header>
-      <div className="flex-1 overflow-hidden">
-        <Grid isOffline={isOffline} />
-      </div>
-    </main>
+    <div className="flex h-screen flex-col items-center justify-center gap-8 bg-gray-50">
+      <h1 className="text-3xl font-bold text-gray-800">My Spreadsheets</h1>
+      <p className="text-sm text-gray-500">
+        Welcome, {user.displayName ?? user.email}
+      </p>
+      <button
+        onClick={() => void handleCreateDoc()}
+        disabled={isCreating}
+        className="rounded-lg bg-blue-600 px-8 py-4 text-lg font-semibold text-white shadow-md transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {isCreating ? "Creating..." : "➕ Create New Spreadsheet"}
+      </button>
+    </div>
   );
 }
