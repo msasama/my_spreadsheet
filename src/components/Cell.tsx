@@ -7,6 +7,8 @@ interface CellProps {
     initialFormula: string;
     initialValue: string;
     onUpdate: (id: string, formula: string) => void;
+    onFocusCell: (cellId: string) => void;
+    onBlurCell: () => void;
     isOffline: boolean;
 }
 
@@ -15,34 +17,40 @@ const Cell = React.memo(function Cell({
     initialFormula,
     initialValue,
     onUpdate,
+    onFocusCell,
+    onBlurCell,
     isOffline,
 }: CellProps) {
     const [isEditing, setIsEditing] = useState<boolean>(false);
     const [localFormula, setLocalFormula] = useState<string>(initialFormula);
     const lastServerFormula = useRef<string>(initialFormula);
 
-    // Sync when server-side formula changes
+    // Sync when server-side value changes (only if not editing)
     const prevInitialFormula = useRef<string>(initialFormula);
     if (initialFormula !== prevInitialFormula.current) {
         prevInitialFormula.current = initialFormula;
         lastServerFormula.current = initialFormula;
-        setLocalFormula(initialFormula);
+        if (!isEditing) {
+            setLocalFormula(initialFormula);
+        }
     }
 
     const handleFocus = useCallback(() => {
         // The Lock: block editing when offline
         if (isOffline) return;
         setIsEditing(true);
-    }, [isOffline]);
+        onFocusCell(cellId);
+    }, [isOffline, onFocusCell, cellId]);
 
     const handleBlur = useCallback(() => {
         setIsEditing(false);
+        onBlurCell();
         // Focus guard: only fire onUpdate if the formula actually changed
         if (localFormula !== lastServerFormula.current) {
             lastServerFormula.current = localFormula;
             onUpdate(cellId, localFormula);
         }
-    }, [localFormula, onUpdate, cellId]);
+    }, [localFormula, onUpdate, onBlurCell, cellId]);
 
     const handlePaste = useCallback((e: ClipboardEvent<HTMLInputElement>) => {
         const text = e.clipboardData.getData("text/plain");

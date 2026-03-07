@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import Cell from "@/components/Cell";
+import { updateCell, subscribeToRows, type RowData } from "@/lib/sync";
 
 const COLUMNS: string[] = Array.from({ length: 26 }, (_, i) =>
     String.fromCharCode(65 + i)
@@ -17,10 +18,18 @@ type GridData = Record<string, CellData>;
 
 interface GridProps {
     isOffline: boolean;
+    docId: string;
 }
 
-export default function Grid({ isOffline }: GridProps) {
-    const [data, setData] = useState<GridData>(() => {
+export default function Grid({ isOffline, docId }: GridProps) {
+    // Server truth stored in ref — avoids 1,300-cell re-renders on every update
+    const serverData = useRef<GridData>({});
+
+    // Active cell ref for focus isolation
+    const activeCellRef = useRef<string | null>(null);
+
+    // Render data — initialized lazily, only updated for cells that actually changed
+    const [renderData, setRenderData] = useState<GridData>(() => {
         const init: GridData = {};
         for (const col of COLUMNS) {
             for (const row of ROWS) {
@@ -31,13 +40,83 @@ export default function Grid({ isOffline }: GridProps) {
         return init;
     });
 
-    // Mutex: functional update + empty deps = stable reference, never breaks React.memo
-    const handleCellUpdate = useCallback((id: string, newFormula: string) => {
-        setData((prev) => ({
-            ...prev,
-            [id]: { formula: newFormula, value: newFormula },
-        }));
+    // Subscribe to real-time Firestore updates
+    useEffect(() => {
+        const unsubscribe = subscribeToRows(docId, (rows: RowData[]) => {
+            // Build flat map from incoming row data
+            const incoming: GridData = {};
+            for (const row of rows) {
+                for (const col of COLUMNS) {
+                    const id = `${col}${row.id}`;
+                    const cellValue = row.cells[col]?.value ?? "";
+                    incoming[id] = { formula: cellValue, value: cellValue };
+                }
+            }
+
+            // Update server ref (always — this is the truth)
+            serverData.current = incoming;
+
+            // Diff and selectively update render data
+            setRenderData((prev) => {
+                const next = { ...prev };
+                let hasChanges = false;
+
+                for (const id of Object.keys(incoming)) {
+                    const incomingCell = incoming[id];
+                    const currentCell = prev[id];
+
+                    // Focus isolation: skip the actively edited cell
+                    if (id === activeCellRef.current) continue;
+
+                    // Only update if value actually changed
+                    if (
+                        !currentCell ||
+                        currentCell.value !== incomingCell.value ||
+                        currentCell.formula !== incomingCell.formula
+                    ) {
+                        next[id] = incomingCell;
+                        hasChanges = true;
+                    }
+                }
+
+                return hasChanges ? next : prev;
+            });
+        });
+
+        return unsubscribe;
+    }, [docId]);
+
+    // Track active cell for focus isolation
+    const handleCellFocus = useCallback((cellId: string) => {
+        activeCellRef.current = cellId;
     }, []);
+
+    const handleCellBlur = useCallback(() => {
+        activeCellRef.current = null;
+    }, []);
+
+    // Write handler — compare-before-write, then push to Firestore
+    const handleCellUpdate = useCallback(
+        (id: string, newFormula: string) => {
+            // Extract column and row from cell ID (e.g., "A1" -> col="A", rowId="1")
+            const col = id.charAt(0);
+            const rowId = id.slice(1);
+
+            // Compare with last known server value
+            const serverValue = serverData.current[id]?.value ?? "";
+            if (newFormula === serverValue) return;
+
+            // Update local render data immediately (optimistic)
+            setRenderData((prev) => ({
+                ...prev,
+                [id]: { formula: newFormula, value: newFormula },
+            }));
+
+            // Write to Firestore
+            void updateCell(docId, rowId, col, newFormula);
+        },
+        [docId]
+    );
 
     return (
         <div className="h-full w-full overflow-auto border border-gray-400 bg-white">
@@ -65,7 +144,7 @@ export default function Grid({ isOffline }: GridProps) {
                             </td>
                             {COLUMNS.map((col) => {
                                 const id = `${col}${row}`;
-                                const cell = data[id];
+                                const cell = renderData[id];
                                 return (
                                     <td key={id} className="p-0">
                                         <Cell
@@ -73,6 +152,8 @@ export default function Grid({ isOffline }: GridProps) {
                                             initialFormula={cell.formula}
                                             initialValue={cell.value}
                                             onUpdate={handleCellUpdate}
+                                            onFocusCell={handleCellFocus}
+                                            onBlurCell={handleCellBlur}
                                             isOffline={isOffline}
                                         />
                                     </td>

@@ -151,7 +151,7 @@ export default function SheetPage() {
             </header>
 
             <div className="flex-1 overflow-hidden">
-                <Grid isOffline={isOffline} />
+                <Grid isOffline={isOffline} docId={docId} />
             </div>
         </main>
     );
