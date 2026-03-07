@@ -73,6 +73,11 @@ const Cell = React.memo(function Cell({
                 onChange={(e) => setLocalFormula(e.target.value)}
                 onFocus={(e) => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
                 onBlur={handleBlur}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === "Escape") {
+                        e.currentTarget.blur();
+                    }
+                }}
                 onPaste={handlePaste}
                 maxLength={2000}
                 autoFocus

@@ -126,12 +126,14 @@ export default function SheetPage() {
 
                 {/* Right: Status + User + Actions */}
                 <div className="flex items-center gap-3">
-                    {/* Save indicator */}
-                    {syncState === "saving" ? (
-                        <span className="text-xs font-medium text-orange-500">⏳ Saving...</span>
-                    ) : (
-                        <span className="text-xs font-medium text-green-600">Saved to cloud ☁️</span>
-                    )}
+                    {/* Save indicator — fixed width to prevent layout jitter */}
+                    <span className="w-32 text-center text-xs font-medium">
+                        {syncState === "saving" ? (
+                            <span className="text-orange-500">⏳ Saving...</span>
+                        ) : (
+                            <span className="text-green-600">Saved to cloud ☁️</span>
+                        )}
+                    </span>
 
                     {/* Online/Offline status */}
                     {isOffline ? (
