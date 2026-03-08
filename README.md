@@ -1,12 +1,12 @@
 # My Spreadsheet
 
-A real-time collaborative spreadsheet built from scratch — not a tutorial copy-paste, but a ground-up implementation where every architectural decision was made deliberately. The focus here wasn't on cramming in features, but on making the core experience **fast, snappy, and reliable** — the kind of stuff you only notice when it's missing.
+A real-time collaborative spreadsheet built from scratch ,a ground-up implementation where every architectural decision was made deliberately. The focus here wasn't on cramming in features, but on making the core experience **fast, snappy, and reliable** — the kind of stuff you only notice when it's missing.
 
 > **26 columns × 50 rows = 1,300 cells** rendered simultaneously, with real-time sync, live cursors, and zero unnecessary re-renders.
 
 ---
 
-## Quick Start (for recruiters / reviewers)
+## Quick Start 
 
 Want to run this locally and poke around? Here's everything you need:
 
