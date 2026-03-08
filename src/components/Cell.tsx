@@ -99,8 +99,20 @@ const Cell = React.memo(function Cell({
                     onPaste={handlePaste}
                     maxLength={2000}
                     autoFocus
-                    className="h-8 w-28 border border-blue-500 px-1 text-sm text-gray-900 outline-none ring-2 ring-blue-300"
+                    className="h-8 w-28 px-1 text-sm text-gray-900 outline-none"
+                    style={remoteUser
+                        ? { border: `2px solid ${remoteUser.color}`, boxShadow: `0 0 0 2px ${remoteUser.color}40` }
+                        : { border: "2px solid #3b82f6", boxShadow: "0 0 0 2px #93c5fd" }
+                    }
                 />
+                {remoteUser && (
+                    <div
+                        className="absolute -top-4 left-0 z-30 whitespace-nowrap rounded-sm px-1 text-[10px] font-semibold text-white"
+                        style={{ backgroundColor: remoteUser.color }}
+                    >
+                        {remoteUser.name.split(" ")[0]}
+                    </div>
+                )}
             </div>
         );
     }

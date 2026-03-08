@@ -30,7 +30,7 @@ export default function SheetPage() {
 
     const color = user ? getUserColor(user.uid) : "";
     const activeUsers = usePresence(docId, user, color);
-    console.log("🔥 ACTIVE USERS ARRAY:", activeUsers);
+
 
     useEffect(() => {
         getDocument(docId)
