@@ -8,6 +8,7 @@ import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
 import Grid from "@/components/Grid";
 import useIsOffline from "@/hooks/useIsOffline";
+import usePresence from "@/hooks/usePresence";
 import { getUserColor } from "@/lib/colors";
 import { getDocument, updateDocumentTitle } from "@/lib/documents";
 
@@ -27,7 +28,10 @@ export default function SheetPage() {
         setSyncState(state);
     }, []);
 
-    // Fetch document title on mount
+    const color = user ? getUserColor(user.uid) : "";
+    const activeUsers = usePresence(docId, user, color);
+    console.log("🔥 ACTIVE USERS ARRAY:", activeUsers);
+
     useEffect(() => {
         getDocument(docId)
             .then((doc) => {
@@ -47,7 +51,6 @@ export default function SheetPage() {
     const handleTitleSave = (newTitle: string): void => {
         const trimmed = newTitle.trim();
         if (trimmed.length === 0) {
-            // Revert to current title if empty
             setLocalTitle(title);
             setIsEditingTitle(false);
             return;
@@ -78,8 +81,6 @@ export default function SheetPage() {
             </div>
         );
     }
-
-    const color = getUserColor(user.uid);
 
     return (
         <main className="flex h-screen flex-col">
@@ -124,40 +125,63 @@ export default function SheetPage() {
                     )}
                 </div>
 
-                {/* Right: Status + User + Actions */}
-                <div className="flex items-center gap-3">
-                    {/* Save indicator — fixed width to prevent layout jitter */}
-                    <span className="w-32 text-center text-xs font-medium">
-                        {syncState === "saving" ? (
-                            <span className="text-orange-500">⏳ Saving...</span>
-                        ) : (
-                            <span className="text-green-600">Saved to cloud ☁️</span>
+                <div className="flex items-center gap-2">
+                    <div className="flex w-40 items-center justify-end -space-x-2">
+                        {activeUsers.slice(0, 5).map((u) => (
+                            <div
+                                key={u.uid}
+                                title={u.name}
+                                style={{ backgroundColor: u.color }}
+                                className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white ${user && u.uid === user.uid
+                                        ? "ring-2 ring-offset-1 ring-blue-400 border-2 border-white"
+                                        : "border-2 border-white"
+                                    }`}
+                            >
+                                {u.name.charAt(0).toUpperCase()}
+                            </div>
+                        ))}
+                        {activeUsers.length > 5 && (
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-gray-400 text-xs font-bold text-white">
+                                +{activeUsers.length - 5}
+                            </div>
                         )}
-                    </span>
+                    </div>
 
-                    {/* Online/Offline status */}
-                    {isOffline ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-700">
-                            <span className="h-2 w-2 rounded-full bg-red-500" />
-                            Offline
+                    {/* Right: Status + User + Actions */}
+                    <div className="flex items-center gap-3">
+                        {/* Save indicator — fixed width to prevent layout jitter */}
+                        <span className="w-32 text-center text-xs font-medium">
+                            {syncState === "saving" ? (
+                                <span className="text-orange-500">⏳ Saving...</span>
+                            ) : (
+                                <span className="text-green-600">Saved to cloud ☁️</span>
+                            )}
                         </span>
-                    ) : (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
-                            <span className="h-2 w-2 rounded-full bg-green-500" />
-                            Synced
+
+                        {/* Online/Offline status */}
+                        {isOffline ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-700">
+                                <span className="h-2 w-2 rounded-full bg-red-500" />
+                                Offline
+                            </span>
+                        ) : (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
+                                <span className="h-2 w-2 rounded-full bg-green-500" />
+                                Synced
+                            </span>
+                        )}
+
+                        <span className="text-xs text-gray-400">
+                            {user.displayName ?? user.email}
                         </span>
-                    )}
 
-                    <span className="text-xs text-gray-400">
-                        {user.displayName ?? user.email}
-                    </span>
-
-                    <button
-                        onClick={() => void signOut(auth)}
-                        className="rounded-md bg-red-500 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-600"
-                    >
-                        Sign Out
-                    </button>
+                        <button
+                            onClick={() => void signOut(auth)}
+                            className="rounded-md bg-red-500 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-600"
+                        >
+                            Sign Out
+                        </button>
+                    </div>
                 </div>
             </header>
 

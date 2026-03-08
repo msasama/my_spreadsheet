@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import Cell from "@/components/Cell";
 import { updateCell, subscribeToRows, type RowData } from "@/lib/sync";
+import { type PresenceData } from "@/lib/presence";
 
 const COLUMNS: string[] = Array.from({ length: 26 }, (_, i) =>
     String.fromCharCode(65 + i)
@@ -16,20 +17,23 @@ interface CellData {
 
 type GridData = Record<string, CellData>;
 
+interface RemoteUser {
+    name: string;
+    color: string;
+}
+
 interface GridProps {
     isOffline: boolean;
     docId: string;
+    currentUid: string;
+    activeUsers: PresenceData[];
     onSyncStateChange?: (state: "saved" | "saving") => void;
 }
 
-export default function Grid({ isOffline, docId, onSyncStateChange }: GridProps) {
-    // Server truth stored in ref — avoids 1,300-cell re-renders on every update
+export default function Grid({ isOffline, docId, currentUid, activeUsers, onSyncStateChange }: GridProps) {
     const serverData = useRef<GridData>({});
-
-    // Active cell ref for focus isolation
     const activeCellRef = useRef<string | null>(null);
 
-    // Render data — initialized lazily, only updated for cells that actually changed
     const [renderData, setRenderData] = useState<GridData>(() => {
         const init: GridData = {};
         for (const col of COLUMNS) {
@@ -41,12 +45,23 @@ export default function Grid({ isOffline, docId, onSyncStateChange }: GridProps)
         return init;
     });
 
-    // Subscribe to real-time Firestore updates
+    /*
+     * Build a fast lookup map: cellId -> { name, color }
+     * Only includes OTHER users so you don't lock yourself out
+     */
+    const remotePresenceMap = useMemo(() => {
+        const map: Record<string, RemoteUser> = {};
+        for (const u of activeUsers) {
+            if (u.uid === currentUid) continue;
+            if (!u.activeCell) continue;
+            map[u.activeCell] = { name: u.name, color: u.color };
+        }
+        return map;
+    }, [activeUsers, currentUid]);
+
     useEffect(() => {
         const unsubscribe = subscribeToRows(docId, (rows: RowData[], isPending: boolean) => {
-            // Report sync state to parent
             onSyncStateChange?.(isPending ? "saving" : "saved");
-            // Build flat map from incoming row data
             const incoming: GridData = {};
             for (const row of rows) {
                 for (const col of COLUMNS) {
@@ -56,10 +71,8 @@ export default function Grid({ isOffline, docId, onSyncStateChange }: GridProps)
                 }
             }
 
-            // Update server ref (always — this is the truth)
             serverData.current = incoming;
 
-            // Diff and selectively update render data
             setRenderData((prev) => {
                 const next = { ...prev };
                 let hasChanges = false;
@@ -68,10 +81,8 @@ export default function Grid({ isOffline, docId, onSyncStateChange }: GridProps)
                     const incomingCell = incoming[id];
                     const currentCell = prev[id];
 
-                    // Focus isolation: skip the actively edited cell
                     if (id === activeCellRef.current) continue;
 
-                    // Only update if value actually changed
                     if (
                         !currentCell ||
                         currentCell.value !== incomingCell.value ||
@@ -89,7 +100,6 @@ export default function Grid({ isOffline, docId, onSyncStateChange }: GridProps)
         return unsubscribe;
     }, [docId]);
 
-    // Track active cell for focus isolation
     const handleCellFocus = useCallback((cellId: string) => {
         activeCellRef.current = cellId;
     }, []);
@@ -98,24 +108,19 @@ export default function Grid({ isOffline, docId, onSyncStateChange }: GridProps)
         activeCellRef.current = null;
     }, []);
 
-    // Write handler — compare-before-write, then push to Firestore
     const handleCellUpdate = useCallback(
         (id: string, newFormula: string) => {
-            // Extract column and row from cell ID (e.g., "A1" -> col="A", rowId="1")
             const col = id.charAt(0);
             const rowId = id.slice(1);
 
-            // Compare with last known server value
             const serverValue = serverData.current[id]?.value ?? "";
             if (newFormula === serverValue) return;
 
-            // Update local render data immediately (optimistic)
             setRenderData((prev) => ({
                 ...prev,
                 [id]: { formula: newFormula, value: newFormula },
             }));
 
-            // Write to Firestore
             void updateCell(docId, rowId, col, newFormula);
         },
         [docId]
@@ -126,7 +131,6 @@ export default function Grid({ isOffline, docId, onSyncStateChange }: GridProps)
             <table className="border-collapse">
                 <thead>
                     <tr className="sticky top-0 z-10">
-                        {/* Top-left corner cell */}
                         <th className="sticky left-0 z-20 h-8 w-12 border border-gray-300 bg-gray-200" />
                         {COLUMNS.map((col) => (
                             <th
@@ -141,23 +145,26 @@ export default function Grid({ isOffline, docId, onSyncStateChange }: GridProps)
                 <tbody>
                     {ROWS.map((row) => (
                         <tr key={row}>
-                            {/* Row header */}
                             <td className="sticky left-0 z-10 h-8 w-12 border border-gray-300 bg-gray-100 text-center text-xs font-semibold text-gray-500">
                                 {row}
                             </td>
                             {COLUMNS.map((col) => {
                                 const id = `${col}${row}`;
                                 const cell = renderData[id];
+                                const remote = remotePresenceMap[id];
                                 return (
                                     <td key={id} className="p-0">
                                         <Cell
                                             cellId={id}
+                                            docId={docId}
+                                            currentUid={currentUid}
                                             initialFormula={cell.formula}
                                             initialValue={cell.value}
                                             onUpdate={handleCellUpdate}
                                             onFocusCell={handleCellFocus}
                                             onBlurCell={handleCellBlur}
                                             isOffline={isOffline}
+                                            remoteUser={remote}
                                         />
                                     </td>
                                 );
