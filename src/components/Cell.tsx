@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useRef, useCallback, type ClipboardEvent } from "react";
+import React, { useState, useRef, useCallback, useMemo, type ClipboardEvent } from "react";
 import { updateActiveCell } from "@/lib/presence";
+import { evaluateFormula, type GridData } from "@/lib/parser";
 
 interface RemoteUser {
     name: string;
@@ -14,6 +15,7 @@ interface CellProps {
     currentUid: string;
     initialFormula: string;
     initialValue: string;
+    gridData: GridData;
     onUpdate: (id: string, formula: string) => void;
     onFocusCell: (cellId: string) => void;
     onBlurCell: () => void;
@@ -36,6 +38,7 @@ const Cell = React.memo(function Cell({
     currentUid,
     initialFormula,
     initialValue,
+    gridData,
     onUpdate,
     onFocusCell,
     onBlurCell,
@@ -54,6 +57,10 @@ const Cell = React.memo(function Cell({
             setLocalFormula(initialFormula);
         }
     }
+
+    const displayValue = useMemo(() => {
+        return evaluateFormula(initialFormula, gridData);
+    }, [initialFormula, gridData]);
 
     const handleFocus = useCallback(() => {
         if (isOffline) return;
@@ -128,7 +135,7 @@ const Cell = React.memo(function Cell({
                 className={`h-8 w-28 truncate px-1 text-sm text-gray-900 leading-8 ${isOffline ? "cursor-not-allowed bg-gray-50" : ""
                     } ${remoteUser ? "" : "border border-gray-300"}`}
             >
-                {initialValue}
+                {displayValue}
             </div>
             {remoteUser && (
                 <div

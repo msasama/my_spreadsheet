@@ -45,10 +45,6 @@ export default function Grid({ isOffline, docId, currentUid, activeUsers, onSync
         return init;
     });
 
-    /*
-     * Build a fast lookup map: cellId -> { name, color }
-     * Only includes OTHER users so you don't lock yourself out
-     */
     const remotePresenceMap = useMemo(() => {
         const map: Record<string, RemoteUser> = {};
         for (const u of activeUsers) {
@@ -59,6 +55,18 @@ export default function Grid({ isOffline, docId, currentUid, activeUsers, onSync
         return map;
     }, [activeUsers, currentUid]);
 
+    /*
+     * Flat formula map for the parser: cellId -> raw formula string.
+     * This is what Cell passes into evaluateFormula for recursive resolution.
+     */
+    const formulaMap = useMemo(() => {
+        const map: Record<string, string> = {};
+        for (const id of Object.keys(renderData)) {
+            map[id] = renderData[id].formula;
+        }
+        return map;
+    }, [renderData]);
+
     useEffect(() => {
         const unsubscribe = subscribeToRows(docId, (rows: RowData[], isPending: boolean) => {
             onSyncStateChange?.(isPending ? "saving" : "saved");
@@ -66,8 +74,8 @@ export default function Grid({ isOffline, docId, currentUid, activeUsers, onSync
             for (const row of rows) {
                 for (const col of COLUMNS) {
                     const id = `${col}${row.id}`;
-                    const cellValue = row.cells[col]?.value ?? "";
-                    incoming[id] = { formula: cellValue, value: cellValue };
+                    const rawFormula = row.cells[col]?.value ?? "";
+                    incoming[id] = { formula: rawFormula, value: rawFormula };
                 }
             }
 
@@ -85,7 +93,6 @@ export default function Grid({ isOffline, docId, currentUid, activeUsers, onSync
 
                     if (
                         !currentCell ||
-                        currentCell.value !== incomingCell.value ||
                         currentCell.formula !== incomingCell.formula
                     ) {
                         next[id] = incomingCell;
@@ -113,8 +120,8 @@ export default function Grid({ isOffline, docId, currentUid, activeUsers, onSync
             const col = id.charAt(0);
             const rowId = id.slice(1);
 
-            const serverValue = serverData.current[id]?.value ?? "";
-            if (newFormula === serverValue) return;
+            const serverFormula = serverData.current[id]?.formula ?? "";
+            if (newFormula === serverFormula) return;
 
             setRenderData((prev) => ({
                 ...prev,
@@ -160,6 +167,7 @@ export default function Grid({ isOffline, docId, currentUid, activeUsers, onSync
                                             currentUid={currentUid}
                                             initialFormula={cell.formula}
                                             initialValue={cell.value}
+                                            gridData={formulaMap}
                                             onUpdate={handleCellUpdate}
                                             onFocusCell={handleCellFocus}
                                             onBlurCell={handleCellBlur}
