@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { type User } from "firebase/auth";
 import {
     updatePresence,
+    sendHeartbeat,
     removePresence,
     subscribeToPresence,
     type PresenceData,
@@ -31,27 +32,27 @@ export default function usePresence(
         const uid = user.uid;
         const name = user.displayName ?? user.email ?? "Anonymous";
 
-        const sendHeartbeat = (): void => {
-            void updatePresence(docId, uid, {
-                name,
-                color: colorRef.current,
-                activeCell: null,
-            });
-        };
+        /*
+         * First write: full presence doc (name, color, activeCell, lastSeen).
+         * After that: heartbeat only touches lastSeen so it never wipes activeCell.
+         */
+        void updatePresence(docId, uid, {
+            name,
+            color: colorRef.current,
+            activeCell: null,
+        });
 
-        sendHeartbeat();
-        intervalRef.current = setInterval(sendHeartbeat, HEARTBEAT_MS);
+        intervalRef.current = setInterval(() => {
+            void sendHeartbeat(docId, uid);
+        }, HEARTBEAT_MS);
 
         const unsubscribe = subscribeToPresence(docId, (users: PresenceData[]) => {
             const now = Date.now();
             const filtered = users.filter((u) => {
                 const ts = u.lastSeen;
-                if (!ts) return true; // Pending local writes are safe
+                if (!ts) return true;
                 if (typeof ts.toMillis !== "function") return true;
-
-                // Use Math.abs to protect against Windows clock sync drift
                 const age = Math.abs(now - ts.toMillis());
-
                 return age < STALE_THRESHOLD_MS;
             });
             setActiveUsers(filtered);

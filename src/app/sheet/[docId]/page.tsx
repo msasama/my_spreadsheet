@@ -133,8 +133,8 @@ export default function SheetPage() {
                                 title={u.name}
                                 style={{ backgroundColor: u.color }}
                                 className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white ${user && u.uid === user.uid
-                                        ? "ring-2 ring-offset-1 ring-blue-400 border-2 border-white"
-                                        : "border-2 border-white"
+                                    ? "ring-2 ring-offset-1 ring-blue-400 border-2 border-white"
+                                    : "border-2 border-white"
                                     }`}
                             >
                                 {u.name.charAt(0).toUpperCase()}
@@ -186,7 +186,7 @@ export default function SheetPage() {
             </header>
 
             <div className="flex-1 overflow-hidden">
-                <Grid isOffline={isOffline} docId={docId} onSyncStateChange={handleSyncStateChange} />
+                <Grid isOffline={isOffline} docId={docId} currentUid={user.uid} activeUsers={activeUsers} onSyncStateChange={handleSyncStateChange} />
             </div>
         </main>
     );

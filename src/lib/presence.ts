@@ -33,6 +33,14 @@ export async function updatePresence(
     });
 }
 
+export async function sendHeartbeat(
+    docId: string,
+    uid: string
+): Promise<void> {
+    const ref = doc(db, "docs", docId, "presence", uid);
+    await updateDoc(ref, { lastSeen: serverTimestamp() });
+}
+
 export async function updateActiveCell(
     docId: string,
     uid: string,
