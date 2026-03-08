@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useRef, useCallback, useMemo, type ClipboardEvent } from "react";
+import React, { useState, useRef, useCallback, useMemo, type ClipboardEvent, type CSSProperties } from "react";
 import { updateActiveCell } from "@/lib/presence";
 import { evaluateFormula, type GridData } from "@/lib/parser";
+import { type CellFormat } from "@/lib/formatting";
 
 interface RemoteUser {
     name: string;
@@ -16,6 +17,7 @@ interface CellProps {
     initialFormula: string;
     initialValue: string;
     gridData: GridData;
+    format?: CellFormat;
     onUpdate: (id: string, formula: string) => void;
     onFocusCell: (cellId: string) => void;
     onBlurCell: () => void;
@@ -39,6 +41,7 @@ const Cell = React.memo(function Cell({
     initialFormula,
     initialValue,
     gridData,
+    format,
     onUpdate,
     onFocusCell,
     onBlurCell,
@@ -61,6 +64,12 @@ const Cell = React.memo(function Cell({
     const displayValue = useMemo(() => {
         return evaluateFormula(initialFormula, gridData);
     }, [initialFormula, gridData]);
+
+    const formatStyle: CSSProperties = {
+        fontWeight: format?.bold ? 800 : "normal",
+        fontStyle: format?.italic ? "italic" : "normal",
+        color: format?.color || "#111827",
+    };
 
     const handleFocus = useCallback(() => {
         if (isOffline) return;
@@ -90,6 +99,10 @@ const Cell = React.memo(function Cell({
     }, []);
 
     if (isEditing) {
+        const editBorder = remoteUser
+            ? { border: `2px solid ${remoteUser.color}`, boxShadow: `0 0 0 2px ${remoteUser.color}40` }
+            : { border: "2px solid #3b82f6", boxShadow: "0 0 0 2px #93c5fd" };
+
         return (
             <div className="relative">
                 <input
@@ -106,11 +119,8 @@ const Cell = React.memo(function Cell({
                     onPaste={handlePaste}
                     maxLength={2000}
                     autoFocus
-                    className="h-8 w-28 px-1 text-sm text-gray-900 outline-none"
-                    style={remoteUser
-                        ? { border: `2px solid ${remoteUser.color}`, boxShadow: `0 0 0 2px ${remoteUser.color}40` }
-                        : { border: "2px solid #3b82f6", boxShadow: "0 0 0 2px #93c5fd" }
-                    }
+                    className="h-8 w-28 px-1 text-sm outline-none"
+                    style={{ ...formatStyle, ...editBorder }}
                 />
                 {remoteUser && (
                     <div
@@ -132,8 +142,9 @@ const Cell = React.memo(function Cell({
             <div
                 tabIndex={0}
                 onFocus={handleFocus}
-                className={`h-8 w-28 truncate px-1 text-sm text-gray-900 leading-8 ${isOffline ? "cursor-not-allowed bg-gray-50" : ""
+                className={`h-8 w-28 truncate px-1 text-sm leading-8 ${isOffline ? "cursor-not-allowed bg-gray-50" : ""
                     } ${remoteUser ? "" : "border border-gray-300"}`}
+                style={formatStyle}
             >
                 {displayValue}
             </div>

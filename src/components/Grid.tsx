@@ -2,8 +2,11 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import Cell from "@/components/Cell";
+import Toolbar from "@/components/Toolbar";
 import { updateCell, subscribeToRows, type RowData } from "@/lib/sync";
 import { type PresenceData } from "@/lib/presence";
+import { updateCellFormat, type CellFormat } from "@/lib/formatting";
+import useFormatting from "@/hooks/useFormatting";
 
 const COLUMNS: string[] = Array.from({ length: 26 }, (_, i) =>
     String.fromCharCode(65 + i)
@@ -33,6 +36,9 @@ interface GridProps {
 export default function Grid({ isOffline, docId, currentUid, activeUsers, onSyncStateChange }: GridProps) {
     const serverData = useRef<GridData>({});
     const activeCellRef = useRef<string | null>(null);
+    const [activeLocalCell, setActiveLocalCell] = useState<string | null>(null);
+
+    const formattingMap = useFormatting(docId);
 
     const [renderData, setRenderData] = useState<GridData>(() => {
         const init: GridData = {};
@@ -55,10 +61,6 @@ export default function Grid({ isOffline, docId, currentUid, activeUsers, onSync
         return map;
     }, [activeUsers, currentUid]);
 
-    /*
-     * Flat formula map for the parser: cellId -> raw formula string.
-     * This is what Cell passes into evaluateFormula for recursive resolution.
-     */
     const formulaMap = useMemo(() => {
         const map: Record<string, string> = {};
         for (const id of Object.keys(renderData)) {
@@ -109,6 +111,7 @@ export default function Grid({ isOffline, docId, currentUid, activeUsers, onSync
 
     const handleCellFocus = useCallback((cellId: string) => {
         activeCellRef.current = cellId;
+        setActiveLocalCell(cellId);
     }, []);
 
     const handleCellBlur = useCallback(() => {
@@ -133,54 +136,70 @@ export default function Grid({ isOffline, docId, currentUid, activeUsers, onSync
         [docId]
     );
 
+    const handleFormatChange = useCallback(
+        (format: Partial<CellFormat>) => {
+            if (!activeLocalCell) return;
+            void updateCellFormat(docId, activeLocalCell, format);
+        },
+        [docId, activeLocalCell]
+    );
+
     return (
-        <div className="h-full w-full overflow-auto border border-gray-400 bg-white">
-            <table className="border-collapse">
-                <thead>
-                    <tr className="sticky top-0 z-10">
-                        <th className="sticky left-0 z-20 h-8 w-12 border border-gray-300 bg-gray-200" />
-                        {COLUMNS.map((col) => (
-                            <th
-                                key={col}
-                                className="h-8 w-28 border border-gray-300 bg-gray-200 text-center text-xs font-semibold text-gray-600"
-                            >
-                                {col}
-                            </th>
-                        ))}
-                    </tr>
-                </thead>
-                <tbody>
-                    {ROWS.map((row) => (
-                        <tr key={row}>
-                            <td className="sticky left-0 z-10 h-8 w-12 border border-gray-300 bg-gray-100 text-center text-xs font-semibold text-gray-500">
-                                {row}
-                            </td>
-                            {COLUMNS.map((col) => {
-                                const id = `${col}${row}`;
-                                const cell = renderData[id];
-                                const remote = remotePresenceMap[id];
-                                return (
-                                    <td key={id} className="p-0">
-                                        <Cell
-                                            cellId={id}
-                                            docId={docId}
-                                            currentUid={currentUid}
-                                            initialFormula={cell.formula}
-                                            initialValue={cell.value}
-                                            gridData={formulaMap}
-                                            onUpdate={handleCellUpdate}
-                                            onFocusCell={handleCellFocus}
-                                            onBlurCell={handleCellBlur}
-                                            isOffline={isOffline}
-                                            remoteUser={remote}
-                                        />
-                                    </td>
-                                );
-                            })}
+        <div className="flex h-full w-full flex-col">
+            <Toolbar
+                activeCellId={activeLocalCell}
+                currentFormat={activeLocalCell ? formattingMap[activeLocalCell] ?? {} : {}}
+                onFormatChange={handleFormatChange}
+            />
+            <div className="flex-1 overflow-auto border border-gray-400 bg-white">
+                <table className="border-collapse">
+                    <thead>
+                        <tr className="sticky top-0 z-10">
+                            <th className="sticky left-0 z-20 h-8 w-12 border border-gray-300 bg-gray-200" />
+                            {COLUMNS.map((col) => (
+                                <th
+                                    key={col}
+                                    className="h-8 w-28 border border-gray-300 bg-gray-200 text-center text-xs font-semibold text-gray-600"
+                                >
+                                    {col}
+                                </th>
+                            ))}
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {ROWS.map((row) => (
+                            <tr key={row}>
+                                <td className="sticky left-0 z-10 h-8 w-12 border border-gray-300 bg-gray-100 text-center text-xs font-semibold text-gray-500">
+                                    {row}
+                                </td>
+                                {COLUMNS.map((col) => {
+                                    const id = `${col}${row}`;
+                                    const cell = renderData[id];
+                                    const remote = remotePresenceMap[id];
+                                    return (
+                                        <td key={id} className="p-0">
+                                            <Cell
+                                                cellId={id}
+                                                docId={docId}
+                                                currentUid={currentUid}
+                                                initialFormula={cell.formula}
+                                                initialValue={cell.value}
+                                                gridData={formulaMap}
+                                                format={formattingMap[id]}
+                                                onUpdate={handleCellUpdate}
+                                                onFocusCell={handleCellFocus}
+                                                onBlurCell={handleCellBlur}
+                                                isOffline={isOffline}
+                                                remoteUser={remote}
+                                            />
+                                        </td>
+                                    );
+                                })}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }
