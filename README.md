@@ -1,37 +1,31 @@
+```markdown
 # My Spreadsheet
 
-A real-time collaborative spreadsheet built from scratch ,a ground-up implementation where every architectural decision was made deliberately. The focus here wasn't on cramming in features, but on making the core experience **fast, snappy, and reliable** — the kind of stuff you only notice when it's missing.
+A real-time collaborative spreadsheet supporting concurrent multi-user editing. The grid handles 26 columns × 50 rows (1,300 cells) simultaneously with live data synchronization and presence cursors. The primary engineering focus is on rendering performance and minimizing database read/write bottlenecks.
 
-> **26 columns × 50 rows = 1,300 cells** rendered simultaneously, with real-time sync, live cursors, and zero unnecessary re-renders.
-
----
-
-## Quick Start 
-
-Want to run this locally and poke around? Here's everything you need:
+## Quick Start
 
 ### Prerequisites
-
-- **Node.js** v18+
-- **npm**
-- A **Firebase project** with Firestore and Google Auth enabled
+* Node.js v18+
+* npm
+* A Firebase project (Firestore and Google Auth enabled)
 
 ### Setup
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/msasama/my_spreadsheet.git
+git clone [https://github.com/msasama/my_spreadsheet.git](https://github.com/msasama/my_spreadsheet.git)
 cd my_spreadsheet
 
 # 2. Install dependencies
 npm install
 
 # 3. Set up environment variables
-#    Copy the example file and fill in your Firebase config
 cp .env.example .env.local
+
 ```
 
-Open `.env.local` and fill in your Firebase credentials:
+Fill in `.env.local` with your Firebase credentials:
 
 ```env
 NEXT_PUBLIC_FIREBASE_API_KEY="your-api-key"
@@ -40,270 +34,148 @@ NEXT_PUBLIC_FIREBASE_PROJECT_ID="your-project-id"
 NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="your-project.appspot.com"
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="your-sender-id"
 NEXT_PUBLIC_FIREBASE_APP_ID="your-app-id"
+
 ```
 
 ```bash
 # 4. Run the dev server
 npm run dev
+
 ```
 
-Open [http://localhost:3000](http://localhost:3000), sign in with Google, and you're in.
+### Firebase Setup
 
-### Firebase Setup Notes
-
-- Enable **Google sign-in** under Firebase Authentication → Sign-in method
-- Create a **Firestore database** (start in test mode for quick testing)
-- The app auto-creates the grid structure on first load — no manual collection setup needed
-
----
+* Enable Google OAuth in Firebase Authentication.
+* Initialize a Firestore database (test mode for local development).
+* The application handles initial document and collection structuring automatically on first load.
 
 ## Tech Stack
 
 | Layer | Technology |
-|---|---|
+| --- | --- |
 | Framework | Next.js 16 (App Router) |
 | UI | React 19 |
-| Language | TypeScript (strict) |
+| Language | TypeScript (Strict) |
 | Styling | Tailwind CSS 4 |
-| Database | Firebase Firestore (real-time) |
+| Database | Firebase Firestore |
 | Auth | Firebase Auth (Google OAuth) |
-| Formula Engine | mathjs |
+| Formula Engine | math.js |
 | Testing | Vitest |
 
----
+## Architecture & Performance Optimization
 
-## The Thought Process — Why It's Built This Way
+Rendering 1,300 active inputs simultaneously requires strict control over the React component lifecycle to prevent global re-renders.
 
-### The Core Problem: 1,300 Cells on Screen
+### Rendering Control
 
-Here's the thing — a spreadsheet renders a **lot** of cells. Like, a LOT. 26 columns × 50 rows = 1,300 individual components all on screen at the same time. And every time someone types into one cell, the naive approach would re-render **all** 1,300 of them.
+* **React.memo:** The `<Cell>` component is wrapped in `React.memo`. By passing stable references using `useCallback` for all event handlers, the shallow comparison allows unaffected cells to bypass the reconciliation process entirely. Editing a single cell only re-renders that specific component.
+* **Diffing Incoming State:** The `setRenderData` function diffs incoming Firestore snapshots against local state. If the incoming formula matches the current state, it returns the previous object reference (`prev`). This forces React to bail out of rendering the entire Grid when Firestore pushes metadata-only updates.
 
-That's obviously not going to fly. So the entire architecture is designed around one idea: **only touch what actually changed.**
+### State Management & Concurrency
 
----
-
-### `React.memo` — The Foundation of Performance
-
-Every single `<Cell>` component is wrapped in `React.memo`. But it's not just slapping `.memo` on a component and calling it a day — you have to understand what memo actually does under the hood.
-
-React's fiber tree keeps a reference to the previous props of every component. When a re-render is triggered, `React.memo` walks through the new props and does a **shallow comparison** against the old ones. If nothing changed — same `initialFormula`, same `gridData` reference, same `format` object — the component bails out entirely. No virtual DOM diff, no reconciliation, nothing. It's skipped.
-
-This is why every callback passed to `<Cell>` is wrapped in `useCallback` — to keep stable references. If I passed inline arrow functions as props, React would see a "new" function on every render, `.memo` would think something changed, and we'd be right back to re-rendering everything.
-
-The result: when you type in cell A1, only A1 re-renders. The other 1,299 cells don't even blink.
-
-### `useRef` — Tracking Without Re-rendering
-
-There's a tricky scenario: the user is editing a cell, and at the same time, a remote update comes in from Firestore for that same cell. If I blindly overwrite the local state with the server value, the user's cursor jumps, their half-typed formula disappears — terrible UX.
-
-The fix: I use `useRef` to track the last known server formula (`lastServerFormula`). When the user finishes editing and blurs the cell, I compare their local formula against this ref. If it's different, I send the update. If it's the same — meaning they typed something, then undid it — **nothing gets sent**. No wasted write, no wasted bandwidth.
-
-And on the receiving end, the cell checks: "am I currently being edited?" If yes, it ignores incoming server updates for that specific cell. No state collision, no flicker.
-
-### Compare-Before-Write in the Grid
-
-The `setRenderData` updater function doesn't just blindly replace the entire grid state when Firestore sends new data. It loops through incoming cells and does a **diff**:
-
-```
-if (currentCell.formula !== incomingCell.formula) → update
-else → skip
-```
-
-If nothing actually changed, it returns the **same object reference** (`prev`), which means React sees the same state, and the entire component tree below skips re-rendering. This is a big deal when Firestore sends snapshots that include metadata changes (like `hasPendingWrites` toggling) but no actual data changes.
-
-### Focus Isolation with `activeCellRef`
-
-When the Grid processes incoming Firestore updates, it skips the cell that's currently being edited:
-
-```
-if (id === activeCellRef.current) continue;
-```
-
-This is stored in a `useRef`, not `useState`, because I don't want changing the active cell to trigger a re-render of the Grid itself. The ref is read-only during the snapshot callback — it's a read path, not a render path. That distinction matters.
-
----
+* **useRef for Local State:** Overwriting local state with server data while a user is typing causes cursor jumping. `lastServerFormula` is tracked via `useRef`. On blur, the local formula is compared against this ref to determine if a network write is necessary.
+* **Focus Isolation:** The active cell ID is stored in `activeCellRef`. Updating the active cell does not trigger a render of the Grid component, keeping the read/write paths separate.
 
 ## Real-Time Collaboration
 
-### Live Presence & Cursors
+### Presence & Live Cursors
 
-When you open a spreadsheet, other users see your cursor on the cell you're focused on — in real time, with color-coded highlights and name labels. Here's how it works:
+* Cursor colors are assigned deterministically by hashing the user's Firebase UID.
+* Cell focus events trigger a debounced (150ms) Firestore write to broadcast the active cell. This prevents rate-limiting during rapid keyboard navigation.
 
-- Each user gets a **stable color** derived from hashing their Firebase UID. Same person, same color, every time — no random assignment that changes on refresh.
-- When you click into a cell, a **debounced** Firestore write (150ms) broadcasts your active cell to everyone else. Debounced, because you don't want to fire a write for every cell you tab through.
-- Other users' cursors render as colored borders around cells with their first name floating above.
+### Stale User Cleanup
 
-### Heartbeat & Stale User Cleanup
+A heartbeat mechanism runs every 8 seconds, executing a lightweight `updateDoc` that updates a `lastSeen` server timestamp. The frontend presence listener automatically filters out users with timestamps older than 30 seconds to handle dirty disconnects (e.g., closed tabs, network drops).
 
-Presence systems have a classic problem: if someone closes their tab, their "online" status just sits there forever. You need a way to clean up ghosts.
+### Conflict Resolution
 
-The solution: every 8 seconds, each client sends a **heartbeat** — a lightweight `updateDoc` that only touches the `lastSeen` timestamp using `serverTimestamp()`. On the receiving end, when the presence listener fires, it filters out any user whose `lastSeen` is older than 30 seconds. If your heartbeat stops (tab closed, internet died, laptop closed), you fade out within half a minute.
-
-The heartbeat is deliberately lightweight — it only updates `lastSeen`, not the full presence doc. This avoids accidentally wiping out the `activeCell` field.
-
-### Contention — Who Wins?
-
-What happens when two people edit the same cell at the same time? The approach here is **last-write-wins with local priority**:
-
-- While you're editing a cell, incoming server updates for **that specific cell** are ignored. You see your own keystrokes in real time with zero lag.
-- When you blur (finish editing), your value gets pushed to Firestore. If someone else also edited it, the last person to blur wins.
-- Everyone else gets the final value through the real-time Firestore listener.
-
-This is intentional. Building a full OT (Operational Transform) or CRDT system would be a massive undertaking, and for a spreadsheet where cells are independent values (not collaborative text documents), last-write-wins is the right trade-off. The focus was on making the **experience** feel right — no flicker, no cursor jumps, no lost keystrokes — rather than implementing conflict resolution that you'd rarely need.
-
----
+The app uses a Last-Write-Wins (LWW) strategy with local priority. If a remote update targets a cell currently focused by the local user, the remote update is ignored to preserve local keystrokes. Upon blur, the local value is pushed to Firestore, overriding concurrent edits.
 
 ## Formula Parser
 
-The formula engine supports:
+Built around `mathjs` with a custom preprocessing layer to handle spreadsheet-specific syntax.
 
 | Feature | Example |
-|---|---|
-| Basic math | `=10+20*2` → `50` |
-| Cell references | `=A1` returns the value in A1 |
-| Range expansion | `=SUM(A1:A3)` sums all cells from A1 to A3 |
-| Functions | `SUM`, `AVERAGE`, `MIN`, `MAX`, `ABS`, `SQRT`, `ROUND`, `CEIL`, `FLOOR`, `LOG`, `POW`, `MOD` |
-| Nested references | `=A1` where A1 contains `=B1+5` — resolves recursively |
-| Cycle detection | `A1→B1→A1` returns `#ERR_CYCLE` (capped at depth 10) |
-
-### Why Not a Full-Blown Parser?
-
-I deliberately didn't build a Pratt parser or a full AST engine. Here's why: the core challenge of this project was never about parsing — it was about the **real-time sync**, the **live collaboration**, the **performance at scale**, and making the whole thing feel **snappy**. A basic parser that handles the above covers 95% of real spreadsheet use cases, and the remaining 5% (nested parentheses edge cases, custom function definitions) wasn't worth the time trade-off against getting the sync, contention, and performance absolutely right.
-
-The parser runs through `mathjs` for the actual math evaluation, with a preprocessing layer that handles cell references, range expansion (`A1:C3` → individual cell list), and spreadsheet function names mapped to their mathjs equivalents.
-
----
+| --- | --- |
+| Basic Math | `=10+20*2` → `50` |
+| Cell References | `=A1` |
+| Range Expansion | `=SUM(A1:A3)` |
+| Supported Functions | `SUM`, `AVERAGE`, `MIN`, `MAX`, `ABS`, `SQRT`, `ROUND`, `CEIL`, `FLOOR`, `LOG`, `POW`, `MOD` |
+| Recursion | Resolves nested references (e.g., `=A1` referencing `=B1+5`) |
+| Cycle Detection | Halts at depth 10, returning `#ERR_CYCLE` for circular dependencies |
 
 ## Formatting
 
-Each cell supports:
+Text formatting (Bold, Italic, Color) is stored in a dedicated Firestore subcollection (`docs/{docId}/formats/{cellId}`). Decoupling formatting from cell data allows aesthetic changes to sync globally without triggering data evaluation or read conflicts.
 
-- **Bold** — toggle via toolbar
-- **Italic** — toggle via toolbar
-- **Text color** — color picker in toolbar
+## Application Features
 
-Formatting is stored separately from cell data in its own Firestore subcollection (`docs/{docId}/formats/{cellId}`), which means formatting changes sync in real-time across all users without touching the cell data at all. The formatting map is subscribed to via `onSnapshot` and gets passed down as a simple lookup — cell ID → format object.
+* **Offline Handling:** A custom `useIsOffline` hook tracks network status. Upon disconnection, the grid switches to read-only mode to prevent silent write failures.
+* **Write Acknowledgement:** The header utilizes Firestore's `hasPendingWrites` metadata to display accurate "Saving..." and "Saved to cloud" states.
+* **Input Validation:** Clipboard paste events are intercepted. Inputs containing newlines, tabs, or exceeding 2,000 characters are blocked to preserve grid integrity.
+* **Resource Cleanup:** All `onSnapshot` listeners, intervals, and event listeners are strictly cleared in `useEffect` cleanup functions. Firebase is initialized as a singleton to prevent duplicate instances during Next.js hot module replacement.
 
----
+## Data Schema (Firestore)
 
-## Offline UX
-
-The app doesn't just break when the connection drops. A custom `useIsOffline` hook listens to `navigator.onLine` and browser `online`/`offline` events. When you go offline:
-
-- A red **"Offline"** badge appears in the header
-- All cells become **read-only** (grayed out, `cursor-not-allowed`) so you can't make edits that would silently fail
-- Presence updates stop (no point broadcasting when you can't reach Firestore)
-- When connection comes back, the badge flips to **"Synced"** and editing re-enables instantly
-
----
-
-## Saving / Saved Indicator
-
-The header shows a real-time **"Saving..."** / **"Saved to cloud ☁️"** indicator. This is driven by Firestore's `hasPendingWrites` metadata — when a local write hasn't been acknowledged by the server yet, it shows "Saving...", and flips to "Saved" the moment the server confirms. It uses `serverTimestamp()` so the timestamp is always the server's clock, not the client's.
-
----
-
-## Paste Protection
-
-Pasting into a cell is guarded: if the clipboard content contains newlines, tabs, or exceeds 2,000 characters, the paste is **blocked** with an alert. This prevents users from accidentally flooding a single cell with multi-line content or a wall of text that would break the grid layout.
-
----
-
-## Memory Leak Prevention
-
-Every Firestore listener (`onSnapshot`) returns an unsubscribe function, and every single one is cleaned up in the corresponding `useEffect` return. Same for the presence heartbeat interval (`clearInterval`), the `beforeunload` event listener (`removeEventListener`), and the online/offline listeners. Nothing leaks.
-
-The Firebase app itself is initialized as a singleton — on hot reloads during development, it checks `getApps().length` before calling `initializeApp`, so you don't end up with duplicate Firebase instances.
-
----
-
-## Data Architecture (Firestore)
-
-```
+```text
 docs/
   {docId}/
     title, ownerId, ownerName, updatedAt
     rows/
-      "1" → { cells: { A: { value: "hello" }, B: { value: "=A1+10" }, ... } }
+      "1" → { cells: { A: { value: "..." }, B: { value: "..." } } }
       "2" → { cells: { ... } }
-      ...
     presence/
       {uid} → { name, color, activeCell, lastSeen }
     formats/
       "A1" → { bold: true, color: "#ef4444" }
-      "B3" → { italic: true }
+
 ```
 
-### Why Per-Row Documents?
-
-Each row is its own Firestore document. This is intentional:
-
-- **Concurrency**: Two users editing different rows don't cause write conflicts at all — they're writing to completely separate documents.
-- **Granular listeners**: Firestore charges per document read. Having the entire grid in one giant document means every tiny cell change re-downloads everything. Per-row docs mean only the changed row's document fires in the snapshot.
-- **Atomic batch init**: The 50 rows are created in a single `writeBatch` on first load — one network round trip, fully atomic.
-
----
-
-## Document Management
-
-- **Dashboard**: Lists all your spreadsheets, sorted by last modified
-- **Create**: One-click creation with auto-generated Firestore ID, auto-redirect to the new sheet
-- **Editable titles**: Click the title in the header to rename inline, saved to Firestore on blur/enter
-- **Back navigation**: Simple `← Back` link to return to dashboard
-
----
+**Design Choice:** The grid is structured using per-row documents rather than a single large grid document. This limits write contention to the row level and significantly reduces bandwidth overhead, as Firestore charges per document read. Initial grid creation is handled via a single atomic `writeBatch`.
 
 ## Project Structure
 
-```
+```text
 src/
 ├── app/
-│   ├── page.tsx              # Dashboard — list & create spreadsheets
-│   ├── layout.tsx            # Root layout with AuthProvider
+│   ├── page.tsx              # Dashboard
+│   ├── layout.tsx            # AuthProvider layout
 │   └── sheet/[docId]/
-│       └── page.tsx          # Spreadsheet view — header, presence, grid
+│       └── page.tsx          # Main spreadsheet view
 ├── components/
-│   ├── Cell.tsx              # Individual cell — React.memo, local editing, paste guard
-│   ├── Grid.tsx              # 26×50 grid — Firestore sync, compare-before-write
-│   └── Toolbar.tsx           # Bold / Italic / Color controls
+│   ├── Cell.tsx              # Local editing logic, paste guards
+│   ├── Grid.tsx              # Firestore sync, diffing engine
+│   └── Toolbar.tsx           # Formatting controls
 ├── hooks/
-│   ├── usePresence.ts        # Heartbeat, stale user cleanup, cursor broadcast
-│   ├── useIsOffline.ts       # Online/offline detection
-│   └── useFormatting.ts      # Real-time formatting subscription
+│   ├── usePresence.ts        # Heartbeat and cursor tracking
+│   ├── useIsOffline.ts       # Network status
+│   └── useFormatting.ts      # Formatting sync
 ├── lib/
-│   ├── firebase.ts           # Singleton Firebase init
-│   ├── sync.ts               # Cell read/write, row subscription, batch init
-│   ├── parser.ts             # Formula evaluation, cell refs, ranges, cycle detection
-│   ├── parser.test.ts        # Vitest unit tests for the parser
-│   ├── presence.ts           # Firestore presence CRUD
-│   ├── formatting.ts         # Firestore formatting CRUD + subscription
+│   ├── firebase.ts           # Singleton initialization
+│   ├── sync.ts               # Cell CRUD, row subscriptions
+│   ├── parser.ts             # Formula evaluation and cycle detection
+│   ├── presence.ts           # Presence queries
+│   ├── formatting.ts         # Formatting queries
 │   ├── documents.ts          # Document metadata CRUD
-│   └── colors.ts             # Stable user color from UID hash
+│   └── colors.ts             # UID hashing
 ├── context/
-│   └── AuthContext.tsx        # Google OAuth context provider
+│   └── AuthContext.tsx       # Google OAuth
 └── config/
-    └── constants.ts           # Debounce, heartbeat, character limits
+    └── constants.ts          # Limits, timings, configs
+
 ```
-
----
-
-## Running Tests
-
-```bash
-npm test
-```
-
-Runs the Vitest suite — currently covers the formula parser (basic math, cell references, range expansion, string pass-through, cycle detection).
-
----
 
 ## Scripts
 
-| Command | What it does |
-|---|---|
-| `npm run dev` | Start the Next.js dev server |
-| `npm run build` | Production build |
+| Command | Action |
+| --- | --- |
+| `npm run dev` | Start development server |
+| `npm run build` | Compile production build |
 | `npm run start` | Start production server |
-| `npm run lint` | ESLint check |
-| `npm run check:ts` | TypeScript type check (no emit) |
-| `npm test` | Run Vitest tests |
+| `npm run lint` | Run ESLint |
+| `npm run check:ts` | Execute TypeScript type checking |
+| `npm test` | Run Vitest suite (parser logic, cycle detection) |
+
+```
+
+```
